@@ -9,14 +9,21 @@ import {
   Platform,
   ScrollView,
   Animated,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { saveUserProfile } from "../utils/storage";
+import { analyzeMeasurements } from "../services/api";
 
 export default function OnboardingPage() {
+  const params = useLocalSearchParams();
+  const photoUri = params.photoUri as string | undefined;
+
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState("");
 
   const weightInputRef = useRef<TextInput>(null);
 
@@ -114,17 +121,123 @@ export default function OnboardingPage() {
     }).start();
   };
 
+  // Parse height input to centimeters
+  const parseHeightToCm = (heightStr: string): number => {
+    // Check for feet'inches" format (e.g., 5'10")
+    const feetInchesMatch = heightStr.match(/(\d+)'(\d+)/);
+    if (feetInchesMatch) {
+      const feet = parseInt(feetInchesMatch[1], 10);
+      const inches = parseInt(feetInchesMatch[2], 10);
+      return (feet * 12 + inches) * 2.54;
+    }
+
+    // Check for just a number (assume cm if > 100, inches if < 100)
+    const numMatch = heightStr.match(/^(\d+\.?\d*)$/);
+    if (numMatch) {
+      const num = parseFloat(numMatch[1]);
+      if (num > 100) {
+        return num; // Already in cm
+      } else {
+        return num * 2.54; // Assume inches
+      }
+    }
+
+    // Default: try to parse as number and assume cm
+    return parseFloat(heightStr) || 170;
+  };
+
+  // Parse weight input to kilograms
+  const parseWeightToKg = (weightStr: string): number => {
+    const num = parseFloat(weightStr.replace(/[^\d.]/g, ""));
+    // If contains "lbs" or number is > 100, assume pounds
+    if (weightStr.toLowerCase().includes("lb") || num > 100) {
+      return num * 0.453592;
+    }
+    return num || 70;
+  };
+
   const handleContinue = async () => {
     if (!isFormValid || isSubmitting) return;
 
     setIsSubmitting(true);
+
     try {
+      // Save user profile
       await saveUserProfile(height.trim(), weight.trim());
-      router.replace("/garment-editor");
+
+      // If we have a photo, analyze it
+      if (photoUri) {
+        const heightCm = parseHeightToCm(height.trim());
+        const weightKg = parseWeightToKg(weight.trim());
+
+        setAnalysisProgress("Analyzing photo...");
+
+        const result = await analyzeMeasurements(
+          photoUri,
+          heightCm,
+          weightKg,
+          (message) => {
+            setAnalysisProgress(message);
+          }
+        );
+
+        if (result.status === "error") {
+          Alert.alert("Measurement Analysis Failed", result.message, [
+            {
+              text: "Continue Anyway",
+              onPress: () => {
+                router.replace("/garment-editor");
+              },
+            },
+            {
+              text: "Retake Photo",
+              onPress: () => {
+                router.replace("/welcome");
+              },
+              style: "cancel",
+            },
+          ]);
+          return;
+        }
+
+        if (result.status === "partial_success") {
+          Alert.alert(
+            "Partial Measurements",
+            result.message + "\n\nSome measurements may be missing.",
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  router.replace({
+                    pathname: "/garment-editor",
+                    params: {
+                      measurements: JSON.stringify(result.garment_measurements),
+                    },
+                  });
+                },
+              },
+            ]
+          );
+          return;
+        }
+
+        // Success - navigate with measurements
+        router.replace({
+          pathname: "/garment-editor",
+          params: {
+            measurements: JSON.stringify(result.garment_measurements),
+          },
+        });
+      } else {
+        // No photo - just navigate
+        router.replace("/garment-editor");
+      }
     } catch (error) {
-      console.error("Error saving profile:", error);
+      console.error("Error during onboarding:", error);
+      Alert.alert("Error", "An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
+      setAnalysisProgress("");
     }
   };
 
@@ -194,6 +307,13 @@ export default function OnboardingPage() {
             </Animated.View>
           </View>
 
+          {isSubmitting && analysisProgress && (
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="small" color="#2563EB" />
+              <Text style={styles.progressText}>{analysisProgress}</Text>
+            </View>
+          )}
+
           <Animated.View
             style={{
               opacity: buttonOpacity,
@@ -201,32 +321,35 @@ export default function OnboardingPage() {
             }}
           >
             <TouchableOpacity
-              style={[
-                styles.button,
-                !isFormValid && styles.buttonDisabled,
-              ]}
+              style={[styles.button, !isFormValid && styles.buttonDisabled]}
               onPress={handleContinue}
               onPressIn={handleButtonPressIn}
               onPressOut={handleButtonPressOut}
               disabled={!isFormValid || isSubmitting}
               activeOpacity={0.9}
             >
-              <Text
-                style={[
-                  styles.buttonText,
-                  !isFormValid && styles.buttonTextDisabled,
-                ]}
-              >
-                Continue
-              </Text>
-              <Text
-                style={[
-                  styles.buttonArrow,
-                  !isFormValid && styles.buttonTextDisabled,
-                ]}
-              >
-                →
-              </Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Text
+                    style={[
+                      styles.buttonText,
+                      !isFormValid && styles.buttonTextDisabled,
+                    ]}
+                  >
+                    Continue
+                  </Text>
+                  <Text
+                    style={[
+                      styles.buttonArrow,
+                      !isFormValid && styles.buttonTextDisabled,
+                    ]}
+                  >
+                    →
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           </Animated.View>
         </Animated.View>
@@ -290,6 +413,18 @@ const styles = StyleSheet.create({
     color: "#1F2937",
     borderWidth: 2,
     borderColor: "transparent",
+  },
+  progressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    gap: 8,
+  },
+  progressText: {
+    fontSize: 14,
+    color: "#2563EB",
+    fontWeight: "500",
   },
   button: {
     backgroundColor: "#2563EB",

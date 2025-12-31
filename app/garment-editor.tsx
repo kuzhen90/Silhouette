@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import GarmentVisual from "../components/GarmentVisual";
 import MeasurementPanel from "../components/MeasurementPanel";
 import {
@@ -18,6 +19,7 @@ import {
   getMeasurements,
   saveMeasurements,
 } from "../utils/storage";
+import { GarmentMeasurements } from "../services/api";
 
 const GARMENT_OPTIONS: { value: GarmentType; label: string }[] = [
   { value: "shirt", label: "Shirt" },
@@ -26,25 +28,131 @@ const GARMENT_OPTIONS: { value: GarmentType; label: string }[] = [
 ];
 
 export default function GarmentEditor() {
+  const params = useLocalSearchParams();
+  const backendMeasurements = params.measurements as string | undefined;
+
   const [selectedGarment, setSelectedGarment] = useState<GarmentType>("shirt");
   const [measurements, setMeasurements] =
     useState<MeasurementData>(DEFAULT_MEASUREMENTS);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [hasAppliedBackendMeasurements, setHasAppliedBackendMeasurements] =
+    useState(false);
 
   const dropdownAnim = useRef(new Animated.Value(0)).current;
   const chevronRotation = useRef(new Animated.Value(0)).current;
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    loadMeasurements();
-  }, []);
+  // Apply backend measurements when available
+  const applyBackendMeasurements = useCallback(
+    (garmentMeasurements: GarmentMeasurements): MeasurementData => {
+      const formatValue = (value: number | null | undefined): string => {
+        if (value === null || value === undefined) return "";
+        return value.toFixed(1);
+      };
 
-  const loadMeasurements = async () => {
-    const saved = await getMeasurements();
-    if (saved) {
-      setMeasurements(saved);
-    }
-  };
+      return {
+        shirt: {
+          shoulder: formatValue(garmentMeasurements.shirt?.shoulder?.value),
+          chest: formatValue(garmentMeasurements.shirt?.chest?.value),
+          sleeves: formatValue(garmentMeasurements.shirt?.sleeves?.value),
+          length: formatValue(garmentMeasurements.shirt?.length?.value),
+        },
+        pants: {
+          waist: formatValue(garmentMeasurements.pants?.waist?.value),
+          inseam: formatValue(garmentMeasurements.pants?.inseam?.value),
+          rise: formatValue(garmentMeasurements.pants?.rise?.value),
+          leg: formatValue(garmentMeasurements.pants?.leg?.value),
+        },
+        jacket: {
+          shoulder: formatValue(garmentMeasurements.jacket?.shoulder?.value),
+          chest: formatValue(garmentMeasurements.jacket?.chest?.value),
+          sleeves: formatValue(garmentMeasurements.jacket?.sleeves?.value),
+          length: formatValue(garmentMeasurements.jacket?.length?.value),
+        },
+      };
+    },
+    []
+  );
+
+  useEffect(() => {
+    const initializeMeasurements = async () => {
+      // First load any saved measurements
+      const saved = await getMeasurements();
+
+      // If we have backend measurements and haven't applied them yet
+      if (backendMeasurements && !hasAppliedBackendMeasurements) {
+        try {
+          const parsed: GarmentMeasurements = JSON.parse(backendMeasurements);
+          const appliedMeasurements = applyBackendMeasurements(parsed);
+
+          // Merge with saved measurements (backend takes precedence for non-empty values)
+          const merged: MeasurementData = {
+            shirt: {
+              ...DEFAULT_MEASUREMENTS.shirt,
+              ...(saved?.shirt || {}),
+              ...(appliedMeasurements.shirt.shoulder && {
+                shoulder: appliedMeasurements.shirt.shoulder,
+              }),
+              ...(appliedMeasurements.shirt.chest && {
+                chest: appliedMeasurements.shirt.chest,
+              }),
+              ...(appliedMeasurements.shirt.sleeves && {
+                sleeves: appliedMeasurements.shirt.sleeves,
+              }),
+              ...(appliedMeasurements.shirt.length && {
+                length: appliedMeasurements.shirt.length,
+              }),
+            },
+            pants: {
+              ...DEFAULT_MEASUREMENTS.pants,
+              ...(saved?.pants || {}),
+              ...(appliedMeasurements.pants.waist && {
+                waist: appliedMeasurements.pants.waist,
+              }),
+              ...(appliedMeasurements.pants.inseam && {
+                inseam: appliedMeasurements.pants.inseam,
+              }),
+              ...(appliedMeasurements.pants.rise && {
+                rise: appliedMeasurements.pants.rise,
+              }),
+              ...(appliedMeasurements.pants.leg && {
+                leg: appliedMeasurements.pants.leg,
+              }),
+            },
+            jacket: {
+              ...DEFAULT_MEASUREMENTS.jacket,
+              ...(saved?.jacket || {}),
+              ...(appliedMeasurements.jacket.shoulder && {
+                shoulder: appliedMeasurements.jacket.shoulder,
+              }),
+              ...(appliedMeasurements.jacket.chest && {
+                chest: appliedMeasurements.jacket.chest,
+              }),
+              ...(appliedMeasurements.jacket.sleeves && {
+                sleeves: appliedMeasurements.jacket.sleeves,
+              }),
+              ...(appliedMeasurements.jacket.length && {
+                length: appliedMeasurements.jacket.length,
+              }),
+            },
+          };
+
+          setMeasurements(merged);
+          saveMeasurements(merged);
+          setHasAppliedBackendMeasurements(true);
+        } catch (error) {
+          console.error("Error parsing backend measurements:", error);
+          if (saved) {
+            setMeasurements(saved);
+          }
+        }
+      } else if (saved) {
+        setMeasurements(saved);
+      }
+    };
+
+    initializeMeasurements();
+  }, [backendMeasurements, hasAppliedBackendMeasurements, applyBackendMeasurements]);
 
   const debouncedSave = useCallback((newMeasurements: MeasurementData) => {
     if (saveTimeoutRef.current) {

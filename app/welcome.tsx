@@ -119,7 +119,10 @@ export default function WelcomePage() {
 
       if (response.success) {
         await setWelcomeCompleted();
-        router.replace("/onboarding");
+        router.replace({
+          pathname: "/onboarding",
+          params: { photoUri: selectedImage },
+        });
       } else {
         Alert.alert(
           "Upload Failed",
