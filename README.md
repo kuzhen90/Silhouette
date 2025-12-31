@@ -1,8 +1,31 @@
-# Welcome to your Expo app 👋
+# Silhouette
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native app for managing personalized garment measurements. Users can input their body measurements and customize sizing for different garment types to achieve the perfect fit.
 
-## Get started
+## Features
+
+### Onboarding Flow
+1. **Welcome Page** - Users upload a profile photo via camera or gallery
+2. **Measurements Page** - Users enter their height and weight
+
+### Garment Editor
+The main application screen where users can:
+- Select garment type (Shirt, Pants, Jacket)
+- View interactive SVG garment visualizations with measurement indicators
+- Edit measurements specific to each garment type:
+  - **Shirt**: Shoulder Width, Chest, Sleeve Length, Body Length
+  - **Pants**: Waist, Inseam, Rise, Leg Opening
+  - **Jacket**: Shoulder Width, Chest, Sleeve Length, Body Length
+- Measurements auto-save and persist across sessions
+
+## Tech Stack
+- React Native with Expo
+- Expo Router (file-based routing)
+- AsyncStorage for data persistence
+- react-native-svg for garment visualizations
+- react-native-reanimated for animations
+
+## Get Started
 
 1. Install dependencies
 
@@ -16,35 +39,28 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+3. Open the app in:
+   - [Expo Go](https://expo.dev/go)
+   - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+   - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Project Structure
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
 ```
+app/
+  _layout.tsx        # Root layout with navigation logic
+  welcome.tsx        # Photo upload welcome screen
+  onboarding.tsx     # Height/weight input screen
+  garment-editor.tsx # Main garment measurement editor
+  index.tsx          # Default route
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+components/
+  GarmentVisual.tsx    # SVG garment illustrations
+  MeasurementPanel.tsx # Measurement input panel
 
-## Learn more
+services/
+  api.ts             # Photo upload service (dummy implementation)
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+utils/
+  storage.ts         # AsyncStorage helpers for persistence
+```
